@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32-S3 Jam Waktu Solat Simulator (SquareLine Studio Style)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap');
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #0b1120;
+      color: #f8fafc;
+      user-select: none;
+    }
+
+    /* SquareLine Studio TFT Frame Styling */
+    .tft-bezel {
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), inset 0 2px 4px rgba(255, 255, 255, 0.1);
+      border: 3px solid #334155;
+    }
+
+    /* Screen display with ST7789 pixel ratio aspect */
+    .tft-screen {
+      width: 290px;
+      min-height: 440px;
+      background: #070b14;
+      border: 2px solid #1e293b;
+      position: relative;
+      overflow: hidden;
+      border-radius: 14px;
+      box-shadow: inset 0 0 25px rgba(0,0,0,0.85);
+    }
+
+    /* SquareLine style widgets matching user's design */
+    .sq-btn {
+      background: linear-gradient(180deg, #67e8f9 0%, #38bdf8 50%, #0284c7 100%);
+      border: 2px solid #94a3b8;
+      border-radius: 12px;
+      color: #ffffff;
+      font-weight: 700;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.65);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+
+    .sq-btn:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .sq-btn:active {
+      transform: translateY(1px);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+      filter: brightness(0.95);
+    }
+
+    /* Highlight untuk Solat Seterusnya */
+    .sq-btn-active {
+      background: linear-gradient(180deg, #34d399 0%, #059669 100%) !important;
+      border-color: #6ee7b7 !important;
+      box-shadow: 0 0 18px rgba(52, 211, 153, 0.8), inset 0 1px 2px rgba(255,255,255,0.7) !important;
+      animation: pulse-glow 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 14px rgba(52, 211, 153, 0.7); }
+      50% { transform: scale(1.02); box-shadow: 0 0 24px rgba(52, 211, 153, 1); }
+    }
+
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+  <!-- Header Dashboard Controls -->
+  <div class="max-w-4xl w-full mb-6 flex flex-wrap items-center justify-between gap-4 bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-xl">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+        <i class="fa-solid fa-kaaba text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+          Jam Waktu Solat ESP32-S3
+          <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Format 12-Jam (AM/PM)</span>
+        </h1>
+        <p class="text-xs text-slate-400">Paparan ST7789 TFT 1.8" • SquareLine Studio Theme • Kiraan Detik Automatik</p>
+      </div>
+    </div>
+
+    <!-- Zone Selector & Refresh -->
+    <div class="flex items-center gap-3">
+      <div class="flex flex-col">
+        <label class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Pilih Zon JAKIM</label>
+        <select id="zoneSelect" class="bg-slate-800 border border-slate-700 text-xs text-cyan-400 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500">
+          <option value="WLY01" selected>WLY01 - KL & Putrajaya</option>
+          <option value="TRG04">TRG04 - Dungun, Kemaman</option>
+          <option value="TRG01">TRG01 - Kuala Terengganu, Marang</option>
+          <option value="SGR01">SGR01 - Shah Alam, Petaling</option>
+          <option value="JHR02">JHR02 - Johor Bahru, Kulai</option>
+          <option value="PNG01">PNG01 - Pulau Pinang</option>
+          <option value="KDH01">KDH01 - Kota Setar, Alor Setar</option>
+          <option value="KTN01">KTN01 - Kota Bharu</option>
+          <option value="SBH07">SBH07 - Kota Kinabalu</option>
+          <option value="SWK08">SWK08 - Kuching, Bau</option>
+        </select>
+      </div>
+
+      <button id="btnRefreshAPI" class="px-3 py-1.5 mt-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 transition">
+        <i class="fa-solid fa-arrows-rotate"></i> Sync API
+      </button>
+    </div>
+  </div>
+
+  <!-- Device Hardware Mock Container -->
+  <div class="flex flex-col md:flex-row items-center gap-8">
+    
+    <!-- Physical ESP32-S3 Casing Preview -->
+    <div class="tft-bezel p-5 rounded-3xl flex flex-col items-center">
+      <!-- Bezel Top Brand Label -->
+      <div class="w-full flex justify-between items-center text-[10px] text-slate-500 font-mono mb-2 px-1">
+        <span>ESP32-S3 • PORTABLE</span>
+        <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> 4G / GPS ONLINE</span>
+      </div>
+
+      <!-- TFT Screen Canvas Area (Touchscreen 290x440 px) -->
+      <div id="tftScreen" class="tft-screen p-3 flex flex-col justify-between">
+        
+        <!-- ================= SCREEN 1: WAKTU SOLAT (MAIN) ================= -->
+        <div id="screenMain" class="h-full flex flex-col justify-between">
+          <!-- Top Bar: Lokasi & Jam (Format 12 Jam AM/PM) -->
+          <div class="flex justify-between items-start pt-1 px-1 border-b border-slate-800/80 pb-2">
+            <div>
+              <div class="text-[8px] font-bold text-slate-400 tracking-wider uppercase">LOKASI</div>
+              <div id="dispLocation" class="text-xs font-black text-cyan-300 truncate max-w-[130px]">DUNGUN/KMN</div>
+              <!-- Kalendar Hijrah -->
+              <div id="dispHijri" class="text-[9px] text-emerald-400 font-mono font-bold leading-tight">11 Jamadilakhir 1448H</div>
+              <!-- Kalendar Sebenar (Masihi) -->
+              <div id="dispMasihi" class="text-[8px] text-slate-300 font-mono leading-tight flex items-center gap-1 mt-0.5">
+                <i class="fa-regular fa-calendar-days text-cyan-400 text-[8px]"></i>
+                <span id="txtMasihiDate">21 Nov 2026 (Sabtu)</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-[9px] font-bold text-slate-400 tracking-wider">JAM (12-JAM)</div>
+              <div id="dispClock" class="text-xs font-black font-mono text-slate-100">08:47:30 PM</div>
+              <div class="text-[9px] text-slate-400 flex items-center justify-end gap-1">
+                <i class="fa-solid fa-battery-three-quarters text-emerald-400"></i>
+                <span id="dispBattery">7.8V (2S)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Countdown Banner: Menunjukkan baki masa solat seterusnya yang tepat secara dinamik -->
+          <div class="bg-cyan-950/70 border border-cyan-800/60 rounded-xl py-1.5 px-2 text-center my-1.5 shadow-sm">
+            <div class="text-[9px] text-cyan-300 font-semibold flex items-center justify-center gap-1">
+              <i class="fa-regular fa-hourglass-half text-amber-400"></i>
+              Solat Seterusnya: <span id="nextPrayerName" class="font-extrabold text-white uppercase text-[11px] underline decoration-emerald-400 decoration-2">SUBUH</span>
+            </div>
+            <div class="text-xs font-mono font-black text-emerald-400 tracking-wide mt-0.5">
+              Baki Masa: <span id="nextPrayerCount">09:04:15</span>
+            </div>
+          </div>
+
+          <!-- 7 Butang Waktu Solat (Subuh, Duha, Zohor, Asar, Maghrib, Isyak + Tetapan) -->
+          <div class="grid grid-cols-2 gap-2 my-auto">
+            <!-- 1. SUBUH -->
+            <button id="btnSubuh" class="sq-btn h-12 flex flex-col items-center justify-center p-1" onclick="showPrayerDetail('SUBUH')">
+              <span class="text-[10px] font-extrabold tracking-wide">SUBUH</span>
+              <span id="timeSubuh" class="text-xs font-mono font-bold mt-0.5">05:52 AM</span>
+            </button>
+
+            <!-- 2. DUHA (Butang Baru) -->
+            <button id="btnDuha" class="sq-btn h-12 flex flex-col items-center justify-center p-1" onclick="showPrayerDetail('DUHA')">
+              <span class="text-[10px] font-extrabold tracking-wide">DUHA</span>
+              <span id="timeDuha" class="text-xs font-mono font-bold mt-0.5">07:28 AM</span>
+            </button>
+
+            <!-- 3. ZOHOR -->
+            <button id="btnZohor" class="sq-btn h-12 flex flex-col items-center justify-center p-1" onclick="showPrayerDetail('ZOHOR')">
+              <span class="text-[10px] font-extrabold tracking-wide">ZOHOR</span>
+              <span id="timeZohor" class="text-xs font-mono font-bold mt-0.5">01:12 PM</span>
+            </button>
+
+            <!-- 4. ASAR -->
+            <button id="btnAsar" class="sq-btn h-12 flex flex-col items-center justify-center p-1" onclick="showPrayerDetail('ASAR')">
+              <span class="text-[10px] font-extrabold tracking-wide">ASAR</span>
+              <span id="timeAsar" class="text-xs font-mono font-bold mt-0.5">04:34 PM</span>
+            </button>
+
+            <!-- 5. MAGHRIB -->
+            <button id="btnMaghrib" class="sq-btn h-12 flex flex-col items-center justify-center p-1" onclick="showPrayerDetail('MAGHRIB')">
+              <span class="text-[10px] font-extrabold tracking-wide">MAGHRIB</span>
+              <span id="timeMaghrib" class="text-xs font-mono font-bold mt-0.5">07:15 PM</span>
+            </button>
+
+            <!-- 6. ISYAK -->
+            <button id="btnIsyak" class="sq-btn h-12 flex flex-col items-center justify-center p-1" onclick="showPrayerDetail('ISYAK')">
+              <span class="text-[10px] font-extrabold tracking-wide">ISYAK</span>
+              <span id="timeIsyak" class="text-xs font-mono font-bold mt-0.5">08:28 PM</span>
+            </button>
+
+            <!-- 7. TETAPAN (Spans across or full width bar) -->
+            <button class="sq-btn col-span-2 h-10 flex items-center justify-center gap-2 p-1 !bg-gradient-to-r !from-slate-700 !via-slate-800 !to-slate-700 !border-slate-500" onclick="switchScreen('screenMenu')">
+              <i class="fa-solid fa-gear text-xs text-cyan-400"></i>
+              <span class="text-xs font-extrabold tracking-wider">MENU TETAPAN</span>
+            </button>
+          </div>
+
+          <!-- Bottom Status Footer -->
+          <div class="flex justify-between items-center text-[9px] text-slate-500 px-1 pt-1.5 border-t border-slate-800">
+            <span class="flex items-center gap-1"><i class="fa-solid fa-satellite text-cyan-400"></i> GPS FIX: 9</span>
+            <span class="flex items-center gap-1"><i class="fa-solid fa-compass text-amber-400"></i> KIBLAT: 292°</span>
+          </div>
+        </div>
+
+        <!-- ================= SCREEN 2: TETAPAN MENU (Matching menu.png) ================= -->
+        <div id="screenMenu" class="h-full flex flex-col justify-between hidden">
+          <div>
+            <div class="text-center font-bold text-xs text-slate-300 py-1.5 border-b border-slate-800">
+              MENU TETAPAN
+            </div>
+            
+            <!-- 4 Main Action Buttons (Matching user's menu.png) -->
+            <div class="grid grid-cols-2 gap-2 mt-4">
+              <!-- ARAH KIBLAT -->
+              <button class="sq-btn h-16 flex flex-col items-center justify-center p-2 text-center" onclick="switchScreen('screenQibla')">
+                <i class="fa-solid fa-compass text-sm mb-1 text-amber-300"></i>
+                <span class="text-[10px] leading-tight font-extrabold">ARAH KIBLAT</span>
+              </button>
+
+              <!-- TETAPAN JAM -->
+              <button class="sq-btn h-16 flex flex-col items-center justify-center p-2 text-center" onclick="switchScreen('screenRTC')">
+                <i class="fa-regular fa-clock text-sm mb-1 text-cyan-300"></i>
+                <span class="text-[10px] leading-tight font-extrabold">TETAPAN JAM</span>
+              </button>
+
+              <!-- KORDINAT GPS -->
+              <button class="sq-btn h-16 flex flex-col items-center justify-center p-2 text-center" onclick="switchScreen('screenGPS')">
+                <i class="fa-solid fa-location-crosshairs text-sm mb-1 text-emerald-300"></i>
+                <span class="text-[10px] leading-tight font-extrabold">KORDINAT GPS</span>
+              </button>
+
+              <!-- KALENDAR MA'AL HIJRAH -->
+              <button class="sq-btn h-16 flex flex-col items-center justify-center p-2 text-center" onclick="switchScreen('screenHijri')">
+                <i class="fa-solid fa-moon text-sm mb-1 text-purple-300"></i>
+                <span class="text-[10px] leading-tight font-extrabold">KALENDAR HIJRAH</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Back Arrow Button (Matching grey arrow in menu.png) -->
+          <div class="pt-3">
+            <button class="w-14 h-10 rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-500 text-slate-200 flex items-center justify-center transition" onclick="switchScreen('screenMain')">
+              <i class="fa-solid fa-arrow-left text-base"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= SCREEN 3: ARAH KIBLAT (QMC5883L Simulator) ================= -->
+        <div id="screenQibla" class="h-full flex flex-col justify-between hidden">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-1">
+            <span class="text-xs font-bold text-slate-300">KOMPAS KIBLAT</span>
+            <span class="text-[10px] text-cyan-400 font-mono">QMC5883L</span>
+          </div>
+
+          <!-- Compass Graphic -->
+          <div class="relative w-44 h-44 mx-auto my-auto flex items-center justify-center">
+            <!-- Compass Dial Outer Ring -->
+            <div id="compassRing" class="absolute inset-0 rounded-full border-4 border-slate-700 bg-slate-900/60 flex items-center justify-center transition-transform duration-300">
+              <span class="absolute top-1 text-[10px] font-bold text-red-500">U</span>
+              <span class="absolute bottom-1 text-[10px] font-bold text-slate-400">S</span>
+              <span class="absolute right-1 text-[10px] font-bold text-slate-400">T</span>
+              <span class="absolute left-1 text-[10px] font-bold text-slate-400">B</span>
+              <div class="w-full h-[1px] bg-slate-800 absolute"></div>
+              <div class="h-full w-[1px] bg-slate-800 absolute"></div>
+            </div>
+
+            <!-- Qibla Pointer Indicator (Kaaba angle ~292 deg from North in Msia) -->
+            <div id="qiblaPointer" class="absolute w-2 h-32 flex flex-col justify-between items-center transition-transform duration-300" style="transform: rotate(292.8deg);">
+              <div class="text-emerald-400 text-lg -mt-3"><i class="fa-solid fa-kaaba"></i></div>
+              <div class="w-1.5 h-18 bg-emerald-400 rounded-full shadow-[0_0_10px_#34d399]"></div>
+              <div class="w-2 h-2 rounded-full bg-slate-300"></div>
+            </div>
+
+            <!-- Heading readout center -->
+            <div class="z-10 bg-slate-950/90 border border-slate-700 px-2 py-0.5 rounded-md text-center">
+              <div id="compassDeg" class="text-xs font-mono font-black text-cyan-400">292.8°</div>
+              <div class="text-[8px] text-slate-400 uppercase">Arah Kiblat</div>
+            </div>
+          </div>
+
+          <div class="flex justify-between items-center pt-2">
+            <button class="w-12 h-9 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 flex items-center justify-center" onclick="switchScreen('screenMenu')">
+              <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="text-right text-[9px] text-slate-400">
+              <div>Sudut: <b class="text-emerald-400">292.8° NW</b></div>
+              <div>Jarak: ~7,200 km</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= SCREEN 4: KORDINAT GPS ================= -->
+        <div id="screenGPS" class="h-full flex flex-col justify-between hidden">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-1">
+            <span class="text-xs font-bold text-slate-300">STATUS MODUL GPS</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">FIX 3D</span>
+          </div>
+
+          <div class="space-y-2 my-auto text-xs">
+            <div class="glass-panel p-2 rounded-xl">
+              <div class="text-[9px] text-slate-400">LATITUDE / LONGITUDE</div>
+              <div class="font-mono font-bold text-cyan-300 text-xs">3.1390° N, 101.6869° E</div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="glass-panel p-2 rounded-xl">
+                <div class="text-[9px] text-slate-400">SATELIT KUNCI</div>
+                <div class="font-mono font-bold text-emerald-400">11 Satelit</div>
+              </div>
+              <div class="glass-panel p-2 rounded-xl">
+                <div class="text-[9px] text-slate-400">KETINGGIAN</div>
+                <div class="font-mono font-bold text-slate-200">64m ASL</div>
+              </div>
+            </div>
+            <div class="glass-panel p-2 rounded-xl">
+              <div class="text-[9px] text-slate-400">ZON TERDEKAT DIKESAN</div>
+              <div id="gpsZoneDetected" class="font-bold text-amber-400">WLY01 (Kuala Lumpur)</div>
+            </div>
+          </div>
+
+          <button class="w-12 h-9 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 flex items-center justify-center" onclick="switchScreen('screenMenu')">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+        </div>
+
+        <!-- ================= SCREEN 5: TETAPAN JAM / RTC DS1307 ================= -->
+        <div id="screenRTC" class="h-full flex flex-col justify-between hidden">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-1">
+            <span class="text-xs font-bold text-slate-300">RTC DS1307 & MASA</span>
+            <span class="text-[9px] text-cyan-400 font-mono">I2C: 0x68</span>
+          </div>
+
+          <div class="my-auto text-center space-y-3">
+            <div class="text-xl font-mono font-bold text-cyan-300 tracking-wider" id="rtcBigClock">08:47:30 PM</div>
+            <div class="text-xs text-slate-400" id="rtcBigDate">Sabtu, 21 Nov 2026</div>
+
+            <div class="flex flex-col gap-2 pt-2">
+              <button class="w-full py-1.5 px-3 rounded-lg bg-cyan-600/30 border border-cyan-500/50 text-cyan-300 text-xs font-bold hover:bg-cyan-600/50" onclick="alert('Sinkronisasi masa dari GPS berjaya!')">
+                <i class="fa-solid fa-satellite mr-1"></i> Sync Masa Dari GPS
+              </button>
+              <button class="w-full py-1.5 px-3 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-700" onclick="alert('Sinkronisasi masa dari NTP Internet berjaya!')">
+                <i class="fa-solid fa-globe mr-1"></i> Sync Masa Dari NTP
+              </button>
+            </div>
+          </div>
+
+          <button class="w-12 h-9 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 flex items-center justify-center" onclick="switchScreen('screenMenu')">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+        </div>
+
+        <!-- ================= SCREEN 6: KALENDAR MA'AL HIJRAH ================= -->
+        <div id="screenHijri" class="h-full flex flex-col justify-between hidden">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-1">
+            <span class="text-xs font-bold text-slate-300">KALENDAR HIJRAH</span>
+            <span class="text-[9px] text-emerald-400">JAKIM SYNC</span>
+          </div>
+
+          <div class="my-auto text-center space-y-2">
+            <div class="w-12 h-12 mx-auto rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-xl">
+              <i class="fa-solid fa-moon"></i>
+            </div>
+            <div class="text-base font-bold text-white" id="hijriDetailText">11 Jamadilakhir 1448H</div>
+            <div class="text-xs text-slate-400">Tarikh Masihi: 21 November 2026</div>
+            <div class="glass-panel p-2 rounded-xl text-left text-[10px] space-y-1">
+              <div class="text-slate-400">Waktu Imsak: <b class="text-cyan-300 font-mono" id="timeImsak">05:42 AM</b></div>
+              <div class="text-slate-400">Waktu Syuruk: <b class="text-cyan-300 font-mono" id="timeSyuruk">07:02 AM</b></div>
+              <div class="text-slate-400">Waktu Dhuha: <b class="text-cyan-300 font-mono" id="timeDhuhaDetail">07:28 AM</b></div>
+            </div>
+          </div>
+
+          <button class="w-12 h-9 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 flex items-center justify-center" onclick="switchScreen('screenMenu')">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Bezel Bottom Detail -->
+      <div class="w-full flex justify-between items-center text-[9px] text-slate-600 font-mono mt-3 px-1">
+        <span>ST7789 TFT 1.8" TOUCH</span>
+        <span>2S 7.4V LI-ION</span>
+      </div>
+    </div>
+
+    <!-- Right Side Information & Architecture Guide -->
+    <div class="max-w-md space-y-4">
+      <div class="glass-panel p-4 rounded-2xl">
+        <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2 mb-2">
+          <i class="fa-solid fa-clock text-cyan-400"></i> Ciri Baharu yang Ditambah
+        </h3>
+        <ul class="text-xs text-slate-400 space-y-2 list-disc pl-4">
+          <li><b class="text-slate-200">Format 12-Jam (AM/PM):</b> Jam digital utama dan waktu solat pada semua butang kini memaparkan format 12 jam (contoh: <code>08:47 PM</code>, <code>01:12 PM</code>).</li>
+          <li><b class="text-slate-200">Kiraan Detik Dinamik Solat Seterusnya:</b> Sekiranya melepasi Isyak (seperti sekarang 8:47 PM), sistem secara pintar beralih ke <b>SUBUH</b> hari esok dan mengira baki masa secara langsung (*real-time countdown*).</li>
+          <li><b class="text-slate-200">Urutan Solat Harian Pintar:</b>
+            <div class="text-[11px] text-slate-300 mt-1">Subuh &rarr; Duha &rarr; Zohor &rarr; Asar &rarr; Maghrib &rarr; Isyak &rarr; (Kembali ke Subuh esok)</div>
+          </li>
+          <li><b class="text-slate-200">Butang DUHA Baru:</b> Ditambah selaras dengan waktu Duha rasmi JAKIM dengan kesan highlight aktif bila tiba waktunya.</li>
+        </ul>
+      </div>
+
+      <div class="glass-panel p-4 rounded-2xl">
+        <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2 mb-2">
+          <i class="fa-solid fa-location-dot text-emerald-400"></i> Zon Dungun & Kemaman (TRG04)
+        </h3>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Zon <b>TRG04 (Dungun & Kemaman)</b> boleh dipilih terus daripada menu dropdown di atas untuk menguji data langsung dari <code>https://api.waktusolat.app/v2/solat/TRG04</code>.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentZone = "WLY01";
+    
+    // Simpan data mentah timestamp (Unix Epoch Seconds)
+    let prayerTimestamps = {
+      fajr: 0,
+      dhuha: 0,
+      dhuhr: 0,
+      asr: 0,
+      maghrib: 0,
+      isha: 0,
+      imsak: 0,
+      syuruk: 0
+    };
+
+    let prayerDisplay12 = {
+      subuh: "05:52 AM",
+      duha: "07:28 AM",
+      zohor: "01:12 PM",
+      asar: "04:34 PM",
+      maghrib: "07:15 PM",
+      isyak: "08:28 PM",
+      imsak: "05:42 AM",
+      syuruk: "07:02 AM",
+      hijri: "11 Jamadilakhir 1448H"
+    };
+
+    // Fungsi Tukar Masa ke Format 12-Jam (hh:mm AM/PM)
+    function formatTime12(date) {
+      let hours = date.getHours();
+      let minutes = date.getMinutes();
+      let ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // Jam '0' jadi '12'
+      let strHours = hours < 10 ? '0' + hours : hours;
+      let strMinutes = minutes < 10 ? '0' + minutes : minutes;
+      return `${strHours}:${strMinutes} ${ampm}`;
+    }
+
+    function formatClock12(date) {
+      let hours = date.getHours();
+      let minutes = date.getMinutes();
+      let seconds = date.getSeconds();
+      let ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      let strHours = hours < 10 ? '0' + hours : hours;
+      let strMinutes = minutes < 10 ? '0' + minutes : minutes;
+      let strSeconds = seconds < 10 ? '0' + seconds : seconds;
+      return `${strHours}:${strMinutes}:${strSeconds} ${ampm}`;
+    }
+
+    // Tukar Skrin
+    function switchScreen(screenId) {
+      const screens = ['screenMain', 'screenMenu', 'screenQibla', 'screenGPS', 'screenRTC', 'screenHijri'];
+      screens.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
+      const target = document.getElementById(screenId);
+      if (target) target.classList.remove('hidden');
+    }
+
+    // Ambil Data Waktu Solat daripada API Rasmi
+    async function fetchPrayerTimes(zone) {
+      const btn = document.getElementById('btnRefreshAPI');
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Loading...`;
+      try {
+        const res = await fetch(`https://api.waktusolat.app/v2/solat/${zone}`);
+        if (!res.ok) throw new Error("API response error");
+        const data = await res.json();
+        
+        const today = data.prayers && data.prayers[0] ? data.prayers[0] : null;
+        if (today) {
+          // Simpan timestamps
+          prayerTimestamps = {
+            fajr: today.fajr,
+            dhuha: today.dhuha,
+            dhuhr: today.dhuhr,
+            asr: today.asr,
+            maghrib: today.maghrib,
+            isha: today.isha,
+            imsak: today.imsak,
+            syuruk: today.syuruk
+          };
+
+          // Format ke 12 jam
+          prayerDisplay12 = {
+            subuh: formatTime12(new Date(today.fajr * 1000)),
+            duha: formatTime12(new Date(today.dhuha * 1000)),
+            zohor: formatTime12(new Date(today.dhuhr * 1000)),
+            asar: formatTime12(new Date(today.asr * 1000)),
+            maghrib: formatTime12(new Date(today.maghrib * 1000)),
+            isyak: formatTime12(new Date(today.isha * 1000)),
+            imsak: formatTime12(new Date(today.imsak * 1000)),
+            syuruk: formatTime12(new Date(today.syuruk * 1000)),
+            hijri: today.hijri || "11 Jamadilakhir 1448H"
+          };
+
+          updateUI();
+          updateNextPrayerCountdown();
+        }
+      } catch (err) {
+        console.warn("API fallback to generated accurate timing:", err);
+      } finally {
+        btn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> Sync API`;
+      }
+    }
+
+    function updateUI() {
+      document.getElementById('timeSubuh').innerText = prayerDisplay12.subuh;
+      document.getElementById('timeDuha').innerText = prayerDisplay12.duha;
+      document.getElementById('timeZohor').innerText = prayerDisplay12.zohor;
+      document.getElementById('timeAsar').innerText = prayerDisplay12.asar;
+      document.getElementById('timeMaghrib').innerText = prayerDisplay12.maghrib;
+      document.getElementById('timeIsyak').innerText = prayerDisplay12.isyak;
+
+      if (document.getElementById('timeImsak')) document.getElementById('timeImsak').innerText = prayerDisplay12.imsak;
+      if (document.getElementById('timeSyuruk')) document.getElementById('timeSyuruk').innerText = prayerDisplay12.syuruk;
+      if (document.getElementById('timeDhuhaDetail')) document.getElementById('timeDhuhaDetail').innerText = prayerDisplay12.duha;
+      if (document.getElementById('hijriDetailText')) document.getElementById('hijriDetailText').innerText = prayerDisplay12.hijri;
+      if (document.getElementById('dispHijri')) document.getElementById('dispHijri').innerText = prayerDisplay12.hijri;
+
+      const zoneNameMap = {
+        "WLY01": "K. LUMPUR",
+        "TRG04": "DUNGUN/KMN",
+        "TRG01": "K. TERENGGANU",
+        "SGR01": "SHAH ALAM",
+        "JHR02": "JOHOR BAHRU",
+        "PNG01": "P. PINANG",
+        "KDH01": "ALOR SETAR",
+        "KTN01": "KOTA BHARU",
+        "SBH07": "K. KINABALU",
+        "SWK08": "KUCHING"
+      };
+      document.getElementById('dispLocation').innerText = zoneNameMap[currentZone] || currentZone;
+      if (document.getElementById('gpsZoneDetected')) {
+        document.getElementById('gpsZoneDetected').innerText = `${currentZone} (${zoneNameMap[currentZone] || currentZone})`;
+      }
+    }
+
+    // Kira Baki Masa & Tentukan Solat Seterusnya Secara Dinamik
+    function updateNextPrayerCountdown() {
+      const now = new Date();
+      const nowTs = Math.floor(now.getTime() / 1000);
+
+      // Buat tarikh untuk setiap waktu solat hari ini
+      // Sekiranya timestamp API belum dimuat, bina anggaran waktu hari ini
+      let tSubuh, tDuha, tZohor, tAsar, tMaghrib, tIsyak;
+
+      if (prayerTimestamps.fajr > 0) {
+        // Normalizekan hari ini
+        const makeToday = (origTs) => {
+          const d = new Date(origTs * 1000);
+          const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), d.getHours(), d.getMinutes(), 0);
+          return Math.floor(t.getTime() / 1000);
+        };
+        tSubuh = makeToday(prayerTimestamps.fajr);
+        tDuha = makeToday(prayerTimestamps.dhuha);
+        tZohor = makeToday(prayerTimestamps.dhuhr);
+        tAsar = makeToday(prayerTimestamps.asr);
+        tMaghrib = makeToday(prayerTimestamps.maghrib);
+        tIsyak = makeToday(prayerTimestamps.isha);
+      } else {
+        // Anggaran waktu solat Malaysia biasa
+        const makeTodayH = (h, m) => Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0).getTime() / 1000);
+        tSubuh = makeTodayH(5, 52);
+        tDuha = makeTodayH(7, 28);
+        tZohor = makeTodayH(13, 12);
+        tAsar = makeTodayH(16, 34);
+        tMaghrib = makeTodayH(19, 15);
+        tIsyak = makeTodayH(20, 28);
+      }
+
+      let nextName = "";
+      let nextTargetTs = 0;
+      let activeBtnId = "";
+
+      // Logik Urutan Solat mengikut waktu semasa:
+      // Subuh -> Duha -> Zohor -> Asar -> Maghrib -> Isyak -> (Subuh esok)
+      if (nowTs < tSubuh) {
+        nextName = "SUBUH";
+        nextTargetTs = tSubuh;
+        activeBtnId = "btnSubuh";
+      } else if (nowTs < tDuha) {
+        nextName = "DUHA";
+        nextTargetTs = tDuha;
+        activeBtnId = "btnDuha";
+      } else if (nowTs < tZohor) {
+        nextName = "ZOHOR";
+        nextTargetTs = tZohor;
+        activeBtnId = "btnZohor";
+      } else if (nowTs < tAsar) {
+        nextName = "ASAR";
+        nextTargetTs = tAsar;
+        activeBtnId = "btnAsar";
+      } else if (nowTs < tMaghrib) {
+        nextName = "MAGHRIB";
+        nextTargetTs = tMaghrib;
+        activeBtnId = "btnMaghrib";
+      } else if (nowTs < tIsyak) {
+        nextName = "ISYAK";
+        nextTargetTs = tIsyak;
+        activeBtnId = "btnIsyak";
+      } else {
+        // Selepas Isyak (seperti jam 8:47 PM sekarang):
+        // Solat seterusnya ialah SUBUH HARI ESOK!
+        nextName = "SUBUH";
+        nextTargetTs = tSubuh + (24 * 3600); // Tambah 24 jam untuk Subuh keesokan hari
+        activeBtnId = "btnSubuh";
+      }
+
+      // Hitung baki masa (detik)
+      let diff = Math.max(0, nextTargetTs - nowTs);
+      let diffH = Math.floor(diff / 3600);
+      let diffM = Math.floor((diff % 3600) / 60);
+      let diffS = diff % 60;
+
+      let strDiff = `${diffH < 10 ? '0' + diffH : diffH}:${diffM < 10 ? '0' + diffM : diffM}:${diffS < 10 ? '0' + diffS : diffS}`;
+
+      document.getElementById('nextPrayerName').innerText = nextName;
+      document.getElementById('nextPrayerCount').innerText = strDiff;
+
+      // Kemaskini sorotan (highlight glowing) pada butang yang aktif
+      const btnIds = ['btnSubuh', 'btnDuha', 'btnZohor', 'btnAsar', 'btnMaghrib', 'btnIsyak'];
+      btnIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          if (id === activeBtnId) {
+            el.classList.add('sq-btn-active');
+          } else {
+            el.classList.remove('sq-btn-active');
+          }
+        }
+      });
+    }
+
+    // Jam Berjalan (12-Jam AM/PM)
+    function updateClock() {
+      const now = new Date();
+      const clockStr12 = formatClock12(now);
+      const dateStr = now.toLocaleDateString('ms-MY', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+
+      document.getElementById('dispClock').innerText = clockStr12;
+      if (document.getElementById('txtMasihiDate')) document.getElementById('txtMasihiDate').innerText = dateStr;
+      if (document.getElementById('rtcBigClock')) document.getElementById('rtcBigClock').innerText = clockStr12;
+      if (document.getElementById('rtcBigDate')) document.getElementById('rtcBigDate').innerText = dateStr;
+
+      // Update countdown solat setiap saat
+      updateNextPrayerCountdown();
+
+      // Getaran halus realistik kompas
+      const compassDial = document.getElementById('compassRing');
+      if (compassDial) {
+        const jitter = Math.sin(Date.now() / 800) * 1.2;
+        compassDial.style.transform = `rotate(${jitter}deg)`;
+      }
+    }
+
+    function showPrayerDetail(name) {
+      alert(`Waktu Solat ${name}: Disahkan mengikut Zon JAKIM ${currentZone}`);
+    }
+
+    document.getElementById('zoneSelect').addEventListener('change', (e) => {
+      currentZone = e.target.value;
+      fetchPrayerTimes(currentZone);
+    });
+
+    document.getElementById('btnRefreshAPI').addEventListener('click', () => {
+      fetchPrayerTimes(currentZone);
+    });
+
+    // Permulaan
+    fetchPrayerTimes(currentZone);
+    updateUI();
+    setInterval(updateClock, 1000);
+    updateClock();
+  </script>
+</body>
+</html>
