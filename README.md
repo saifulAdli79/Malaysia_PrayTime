@@ -1,4 +1,4 @@
-# Simulator Jam Waktu Solat Pintar (SquareLine Studio Style)
+# Simulator Jam Waktu Solat Pintar
 
 <p align="center">
   <img src="screenshots/preview_simulator.jpg" alt="Pratonton UI Jam Waktu Solat ESP32-S3" width="700">
